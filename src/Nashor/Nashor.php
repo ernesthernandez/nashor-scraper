@@ -1,6 +1,6 @@
 <?php
 
-namespace pewpewyou\Nashor;
+namespace Nashor;
 
 class Nashor
 {

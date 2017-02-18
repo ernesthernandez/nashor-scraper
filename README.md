@@ -1,16 +1,10 @@
 # Nashor Scraper
-
-[![Latest Version on Packagist][ico-version]][link-packagist]
+[![Latest Stable Version](https://poser.pugx.org/pewpewyou/nashor-scraper/v/stable)](https://packagist.org/packages/pewpewyou/nashor-scraper)
 [![Software License][ico-license]](LICENSE.md)
-[![Build Status][ico-travis]][link-travis]
-[![Coverage Status][ico-scrutinizer]][link-scrutinizer]
-[![Quality Score][ico-code-quality]][link-code-quality]
-[![Total Downloads][ico-downloads]][link-downloads]
+[![Build Status][ico-travis]](https://travis-ci.org/pewpewyou/nashor-scraper)
+[![Total Downloads](https://poser.pugx.org/pewpewyou/nashor-scraper/downloads)](https://packagist.org/packages/pewpewyou/nashor-scraper)
 
-**Note:** Replace ```:author_name``` ```:author_username``` ```:author_website``` ```:author_email``` ```:vendor``` ```:package_name``` ```:package_description``` with their correct values in [README.md](README.md), [CHANGELOG.md](CHANGELOG.md), [CONTRIBUTING.md](CONTRIBUTING.md), [LICENSE.md](LICENSE.md) and [composer.json](composer.json) files, then delete this line. You can run `$ php prefill.php` in the command line to make all replacements at once. Delete the file prefill.php as well.
-
-This is where your description should go. Try and limit it to a paragraph or two, and maybe throw in a mention of what
-PSRs you support to avoid any confusion with users and contributors.
+This is a open source multi-thread League of Legends scraper for OP.GG website.
 
 ## Structure
 
@@ -36,8 +30,8 @@ $ composer require pewpewyou/nashor-scraper
 ## Usage
 
 ``` php
-$skeleton = new League\Skeleton();
-echo $skeleton->echoPhrase('Hello, League!');
+$summoner = new Pewpewyou\Nashor(´summonerName´);
+echo $summoner->info();
 ```
 
 ## Change log
@@ -60,8 +54,7 @@ If you discover any security related issues, please email :author_email instead 
 
 ## Credits
 
-- [:author_name][link-author]
-- [All Contributors][link-contributors]
+- [Ernest Hernandez][http://ernest.gallery]
 
 ## License
 
