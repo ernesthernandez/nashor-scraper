@@ -1,8 +1,8 @@
 <?php
 
-namespace League\Skeleton;
+namespace pewpewyou\Nashor;
 
-class SkeletonClass
+class Nashor
 {
     /**
      * Create a new Skeleton Instance
