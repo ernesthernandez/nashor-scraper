@@ -1,4 +1,4 @@
-# :package_name
+# Nashor Scraper
 
 [![Latest Version on Packagist][ico-version]][link-packagist]
 [![Software License][ico-license]](LICENSE.md)
@@ -27,10 +27,10 @@ vendor/
 
 ## Install
 
-Via Composer
+This package can be found on Packagist and is best loaded using Composer.
 
 ``` bash
-$ composer require :vendor/:package_name
+$ composer require pewpewyou/nashor-scraper
 ```
 
 ## Usage
