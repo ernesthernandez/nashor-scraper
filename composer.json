@@ -21,9 +21,9 @@
     ],
     "require": {
         "php" : "~5.6|~7.0",
-        "guzzlehttp/guzzle": "^6.1.1",
-        "paquettg/php-html-parser": "^1.7",
-		"fabpot/goutte": "^3.2"
+        "guzzlehttp/guzzle": "^6.2.2",
+        "paquettg/php-html-parser": "^1.7.0",
+		"fabpot/goutte": "^3.2.1"
     },
     "require-dev": {
         "phpunit/phpunit" : "~4.0||~5.0",
@@ -32,12 +32,12 @@
     },
     "autoload": {
         "psr-4": {
-            "NashorScraper\\": "src"
+            "Nashor\\": "src"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "NashorScraper\\": "tests"
+            "Nashor\\": "tests"
         }
     },
     "scripts": {
