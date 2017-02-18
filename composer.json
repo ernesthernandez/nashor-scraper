@@ -32,12 +32,12 @@
     },
     "autoload": {
         "psr-4": {
-            "Nashor\\": "src/Nashor"
+            "Nashor\\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "Nashor\\": "tests/Nashor"
+            "Nashor\\": "tests/"
         }
     },
     "scripts": {
