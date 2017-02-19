@@ -30,8 +30,13 @@ $ composer require pewpewyou/nashor-scraper
 ## Usage
 
 ``` php
-$summoner = new Pewpewyou\Nashor(´summonerName´);
-echo $summoner->info();
+
+use Nashor\Summoner;
+
+$summoner = new Summoner('scorpionp', 3551110, 'lan');
+$summoner->mmr();
+$summoner->profile();
+
 ```
 
 ## Change log
@@ -39,7 +44,7 @@ echo $summoner->info();
 Please see [CHANGELOG](CHANGELOG.md) for more information on what has changed recently.
 
 ## Testing
-
+TBA
 ``` bash
 $ composer test
 ```
@@ -54,7 +59,7 @@ If you discover any security related issues, please email :author_email instead 
 
 ## Credits
 
-- [Ernest Hernandez][http://ernest.gallery]
+- [Ernest Hernandez](http://ernest.gallery)
 
 ## License
 
