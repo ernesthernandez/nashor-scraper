@@ -2,7 +2,6 @@
     "name": "pewpewyou/nashor-scraper",
     "type": "library",
     "description": "Nashor is a fast high-level web crawling and web scraping tool for OP.GG",
-    "version": "1.0.0",
     "keywords": [
         "league",
         "legends",
