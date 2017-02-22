@@ -1,7 +1,7 @@
 # Nashor Scraper
 [![Latest Stable Version](https://poser.pugx.org/pewpewyou/nashor-scraper/v/stable)](https://packagist.org/packages/pewpewyou/nashor-scraper)
 [![Software License][ico-license]](LICENSE.md)
-[![Build Status][ico-travis]](https://travis-ci.org/pewpewyou/nashor-scraper.svg?branch=master)
+[![Build Status](https://travis-ci.org/pewpewyou/nashor-scraper.svg?branch=master)](https://travis-ci.org/pewpewyou/nashor-scraper)
 [![Total Downloads](https://poser.pugx.org/pewpewyou/nashor-scraper/downloads)](https://packagist.org/packages/pewpewyou/nashor-scraper)
 
 This is a open source multi-thread League of Legends scraper for OP.GG website.
