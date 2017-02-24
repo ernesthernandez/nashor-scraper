@@ -4,8 +4,12 @@ namespace Nashor;
 
 use Nashor\Summoner;
 use GuzzleHttp\{Client, Promise, HandlerStack};
-use Goutte\Client as GoutteClient;
 use GuzzleHttp\Psr7\{Request, Response};
+use GuzzleHttp\TransferStats;
+use Psr\Http\Message\{RequestInterface, ResponseInterface, UriInterface};
+use GuzzleHttp\Psr7;
+use GuzzleHttp\Exception\RequestException;
+use PHPHtmlParser\Dom as Parser;
 
 class Nashor
 {
@@ -19,22 +23,22 @@ class Nashor
      * Guzzle Client Object
      * @var object
      */
-    private $client;
+    protected $client;
     /**
      * Request Object
      * @var object
      */
-    private $request;
+    protected $request;
     /**
      * Web Crawler Object
      * @var object
      */
-    private $crawler;
+    protected $crawler;
     /**
      * DOM Handler Object
      * @var object
      */
-    private $dom;
+    protected $dom;
     /**
      * League of Legends Summoner Region.
      * @var string
@@ -80,14 +84,9 @@ class Nashor
                 'verify'=> false,
                 'defaults' => ['headers' => ['Accept-Language' => 'en', 'Accept-Encoding' => 'gzip,deflate', 'setLocale' => 'en']],
             ]);
-            $goutteClient = new GoutteClient();
-
-            $goutteClient->setClient($guzzleClient);
-
-            $this->crawler = $goutteClient;
 
             return $guzzleClient;
-        } catch (Exception $e) {
+        } catch ( \Exception $e) {
             throw new \RuntimeException('OP.GG is down or something goes wrong.');
         }
     }
@@ -111,9 +110,14 @@ class Nashor
      */
     public function post(string $url, $params = array())
     {
-        return $this->client->request('POST', $url, [
-                                                    'form_params' => $params
-                                                    ]);
+        try {
+            $response = $this->client->request('POST', $url, [
+                                            'form_params' => $params
+                                            ]);
+            return $this->jsonResponse($response);
+        } catch (RequestException $e) {
+            return false;
+        }
     }
 
     /**
@@ -123,9 +127,15 @@ class Nashor
      */
     public function get(string $url, $params = array())
     {
-        return $this->client->request('GET', $url, [
-                                                    'query' => $params,
-                                                    ]);
+        try {
+            $response = $this->client->request('GET', $url, [
+                                            'query' => $params,
+                                            ]);  
+
+            return $this->parsedResponse($response);
+        } catch (RequestException $e) {
+             return false;
+        }
     }
 
     /**
@@ -181,5 +191,44 @@ class Nashor
     public function getUrl()
     {
         return $this->url;
+    }
+
+    public function getRedirectUrl($url, $params = [])
+    {
+        $onRedirect = function(
+            RequestInterface $request,
+            ResponseInterface $response,
+            UriInterface $uri
+        ){
+            return $uri;
+        };
+
+        $res = $this->client->request('GET',$url, [
+            'stream'      => true,
+            'synchronous' => false,
+            'expect' => false,
+            'decode_content' => false,
+            'query'           => $params,
+            'allow_redirects' => [
+                'max'             => 1,
+                'strict'          => true,
+                'referer'         => false,
+                'protocols'       => ['http', 'https'],
+                'on_redirect'     => $onRedirect,
+                'track_redirects' => true
+            ],
+        ]);
+
+        return $res->getHeaderLine('X-Guzzle-Redirect-History');
+    }
+
+    protected function parsedResponse(ResponseInterface $response)
+    {
+        $dom = new Parser;
+        return $dom->load((string) $response->getBody()->getContents());
+    }
+    protected function jsonResponse(ResponseInterface $response)
+    {
+        return json_decode($response->getBody(), false);
     }
 }
