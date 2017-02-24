@@ -9,7 +9,7 @@ interface SummonerInterface
     /**
      * SummonerInterfaceInstance
      */
-    public function __construct(string $summonerName = '', int $summonerId = null, string $region = 'na');
+    public function __construct(string $summonerName = '', string $region = 'na', int $summonerId = 0);
 
 
     /**

@@ -1,7 +1,7 @@
 <?php
 
 namespace Nashor;
-use PHPHtmlParser\Dom;
+
 class Summoner implements SummonerInterface
 {
 
@@ -15,40 +15,36 @@ class Summoner implements SummonerInterface
      * League of Legends Summoner Id.
      * @var int
      */
-    protected $summonerId;    
+    protected $summonerId;
+    /**
+     * Guzzle Client Object
+     * @var object
+     */
+    protected $client;
 
     /*
      * Default options.
      * @var array
      */
     private $config;
-    /**
-     * Guzzle Client Object
-     * @var object
-     */
-    private $client;
 
     /**
      * Summoner Instance
      */
-    public function __construct(string $summonerName = '', int $summonerId = null, string $region = 'na')
+    public function __construct(string $summonerName = '', string $region = 'na', int $summonerId = 0)
     {
         if (empty($summonerName))
         {
-            throw new \RuntimeException('No summoner provided');
-        }
-        else if (!is_numeric($summonerId))
-        {
-            throw new \RuntimeException('The provided ID must be a valid numeric value');
+            throw new \RuntimeException('The provided Summoner name is invalid.');
         }
         else if (!is_string($region))
         {
-            throw new \RuntimeException('The provided ID must be a valid numeric value');
+            throw new \RuntimeException('The provided region name is invalid.');
         }
+        $this->client       = new Nashor($region);
+        $this->region       = $region;
         $this->summonerName = $summonerName;
         $this->summonerId   = $summonerId;
-
-        $this->client       = new Nashor($region);
     }
 
     public function setId(int $summonerId)
@@ -65,10 +61,21 @@ class Summoner implements SummonerInterface
         return $this->getName();
     }
 
-    public function getId(){
+    public function getId()
+    {
+        if ($this->summonerId == 0)
+        {
+           $this->summonerId = filter_var($this->client->getRedirectUrl('http://www.lolking.net/search?', ['name' => $this->summonerName, 'region' => $this->region]), FILTER_SANITIZE_NUMBER_INT);
+        }
+
         return $this->summonerId;
     }
-    public function getName(){
+    /**
+     * Obtain Summoner Name
+     * @return string
+     */
+    public function getName()
+    {
         return $this->summonerName;
     }
 
@@ -80,24 +87,17 @@ class Summoner implements SummonerInterface
     public function renew()
     {
         $params = [
-                    'summonerId' =>  $this->summonerId
+                    'summonerId' =>  $this->getId()
                   ];
 
-        try {
-            $response = $this->client->post('ajax/renew.json/', $params);
-        } catch (Exception $e) {
-            return false;
-        }
+        $sync = $this->client->post('ajax/renew.json/', $params);
 
-        $sync     = $this->client->json($response);
         $finish   = $sync->finish;
 
         do {
             $this->delay($sync->delay);
 
-            $response = $this->client->post('ajax/renewStatus.json/', $params);
-
-            $sync   = $this->client->json($response);
+            $sync = $this->client->post('ajax/renewStatus.json/', $params);
 
             $finish = $sync->finish;
 
@@ -115,17 +115,9 @@ class Summoner implements SummonerInterface
         $params =   [
                       'summonerName' => $this->summonerName,
                     ];
+        $dom = $this->client->get('ajax/mmr/', $params);
 
-        try {
-            $response =$this->client->get('ajax/mmr/', $params);
-
-            $dom = new Dom;
-            $dom->load($response->getBody()->getContents());
-        } catch (Exception $e) {
-            return false;
-        }
-
-        $data['summonerId']   = $this->summonerId;
+        $data['summonerId']   = $this->getId();
         $data['summonerName'] = $this->summonerName;
         $data['mmr']          = filter_var(($dom->find('.MMR')->text), FILTER_SANITIZE_NUMBER_INT);
 
@@ -138,25 +130,25 @@ class Summoner implements SummonerInterface
             if ($do[1] <= 5)
             {
                 $data['division'] =   $do[1];
-                $data['lp'] = filter_var($do[2], FILTER_SANITIZE_NUMBER_INT);
+                $data['points']   = filter_var($do[2], FILTER_SANITIZE_NUMBER_INT);
             }
             else
             {
                 $data['division'] =   1;
-                $data['lp']       = filter_var($do[1], FILTER_SANITIZE_NUMBER_INT); 
+                $data['points']   = filter_var($do[1], FILTER_SANITIZE_NUMBER_INT); 
             }
-        } catch (Exception $e) {
+        } catch ( \Exception $e) {
             
             $data['league']   = 'UNRANKED';
             $data['division'] = 1;
-            $data['lp']       = 0;
+            $data['points']   = 0;
         }
 
         $data['average']      = $dom->find('.TierRankString')->text;
 
         try {
             $data['msg'] = $dom->find('.TipStatus')->text;
-        } catch (Exception $e) {
+        } catch ( \Exception $e) {
             $data['msg'] =  '';
         }
 
@@ -171,12 +163,12 @@ class Summoner implements SummonerInterface
     public function lpHistory($period = 'month')
     {
         $params = [
-                    'summonerId' =>  $this->summonerId,
+                    'summonerId' =>  $this->getId(),
                     'period'     =>  $period
                   ];
 
         $response = $this->client->post('ajax/lpHistory.json/', $params);
-        return  $this->client->json($response);
+        return   $response;
     }
 
     /**
@@ -187,17 +179,14 @@ class Summoner implements SummonerInterface
     {
 
         $params =   [
-              'summonerId' =>  $this->summonerId
+              'summonerId' =>  $this->getId()
             ];
 
-        $response = $this->client->get('http://lan.op.gg/multi/ajax/summoner/', $params);
-
-        $dom = new Dom;
-        $dom->load($response->getBody()->getContents());
+        $dom = $this->client->get('http://lan.op.gg/multi/ajax/summoner/', $params);
 
         try {
             $active = trim(isset($dom->find('.RecentGameWinLogs > .Message')->text)) === 'No recent Ranked Solo within 2 months.';
-        } catch (Exception $e) {
+        } catch ( \Exception $e) {
             $active = true;
         }
 
@@ -224,13 +213,13 @@ class Summoner implements SummonerInterface
         preg_match("/([0-9]{1,2}|100)%/", $dom->find('.RecentGameWinLogs .Title')->text, $recentWinrate);
         preg_match("/([0-9]{1,2}|100)%/", $dom->find('.WinLoseWinRatio .WinRatio')->text, $totalWinrate);
 
-        $data['summonerId']    = $this->summonerId;
+        $data['summonerId']    = $this->getId();
         $data['summonerName']  = $this->summonerName;
 
         $data['recentMatches'] = $dates;
         try {
             $data['recentStreak']  = trim($dom->find('.WinStreak')->text);
-        } catch (Exception $e) {
+        } catch ( \Exception $e) {
             $data['recentStreak']  = '';
         }
 
@@ -260,15 +249,12 @@ class Summoner implements SummonerInterface
     {
 
         $params =   [
-              'summonerId' =>  $this->summonerId
+              'summonerId' =>  $this->getId()
             ];
 
-        $response = $this->client->get('http://lan.op.gg/multi/ajax/summoner/', $params);
+        $dom = $this->client->get('http://lan.op.gg/multi/ajax/summoner/', $params);
 
-        $dom = new Dom;
-        $dom->load($response->getBody()->getContents());
-
-        $data['summonerId']    = $this->summonerId;
+        $data['summonerId']    = $this->getId();
         $data['summonerName']  = trim($dom->find('.SummonerName')->text);
 
         $is_active = FALSE;
@@ -277,8 +263,8 @@ class Summoner implements SummonerInterface
         {
             $is_active = trim(isset($dom->find('.RecentGameWinLogs .Message')->text)) === 'No recent Ranked Solo within 2 months.';
 
-        } catch (Exception $e) {
-            echo $dom->find('.SummonerName')->text .PHP_EOL;
+        } catch ( \Exception $e) {
+             $is_active = FALSE;
         }
 
         if($is_active)
@@ -301,7 +287,7 @@ class Summoner implements SummonerInterface
 
             $winrate = $dom->find('.WinLoseWinRatio .WinRatio')->text;
         
-        } catch (Exception $e) {
+        } catch ( \Exception $e) {
             $winrate = 0;
         }
 
@@ -310,44 +296,44 @@ class Summoner implements SummonerInterface
         try
         {
             $data['division'] = filter_var($dom->find('.TierRank')->text, FILTER_SANITIZE_NUMBER_INT) ?  filter_var($dom->find('.TierRank')->text, FILTER_SANITIZE_NUMBER_INT) : 1;
-        } catch (Exception $e) {
+        } catch ( \Exception $e) {
             $data['division'] = 1;
         }
 
         try
         {
-            $data['lp']           = filter_var($dom->find('.LP')->text, FILTER_SANITIZE_NUMBER_INT, FILTER_FLAG_STRIP_LOW);
-        } catch (Exception $e) {
-            $data['lp']           = 0;
+            $data['points']           = filter_var($dom->find('.LP')->text, FILTER_SANITIZE_NUMBER_INT, FILTER_FLAG_STRIP_LOW);
+        } catch ( \Exception $e) {
+            $data['points']           = 0;
         }
 
         try
         {
             $data['winRatio']      = intval(array_shift($totalWinrate));
-        } catch (Exception $e) {
+        } catch ( \Exception $e) {
                 $data['winRatio']  = 0;
         }
         try {
             $data['wins']          = intval($dom->find('.WinLoseWinRatio .Wins')->text);
-        } catch (Exception $e) {
+        } catch ( \Exception $e) {
             $data['wins']          = 0;
         }
 
         try {
             $data['losses']        = intval($dom->find('.WinLoseWinRatio .Losses')->text);
-        } catch (Exception $e) {
+        } catch ( \Exception $e) {
             $data['losses']            = 0;
         }
 
         try {
             $data['recentStreak']  = $dom->find('.WinStreak')->text;
-        } catch (Exception $e) {
-            $data['recentStreak']  = '';
+        } catch ( \Exception $e) {
+            $data['recentStreak']  = 'No recent Ranked Solo within 2 months.';
         }
 
         try {
-            $data['tierImage']     = basename($dom->find('.TierRankMedal img')->getAttribute('src'));
-        } catch (Exception $e) {
+            $data['tierImage']     = $dom->find('.TierRankMedal img')->getAttribute('src');
+        } catch ( \Exception $e) {
             $data['tierImage']     = 'default.png';
         }
         
@@ -359,7 +345,8 @@ class Summoner implements SummonerInterface
      */
     public function status()
     {
-        $response = $this->client->get('ajax/spectateStatus/', ['summonerName'=> $this->summonerName]);
+        $dom = $this->client->get('ajax/spectateStatus/', ['summonerName'=> $this->summonerName]);
+
         $body     = $this->client->json($response, true);
 
         if (array_key_exists('status', $body)) 
@@ -376,11 +363,10 @@ class Summoner implements SummonerInterface
     public function championSumaries($season = '7')
     {
 
-        $params = ['summonerId' => $this->summonerId, 'season' => $season];
-        $response = $this->client->get('champions/ajax/champions.rank/', $params);
-        
-        $dom = new Dom;
-        $dom->load($response->getBody()->getContents());
+        $params = ['summonerId' => $this->getId(), 'season' => $season];
+
+        $dom = $this->client->get('champions/ajax/champions.rank/', $params);
+
         $contents = $dom->find('.Body .Row');
 
         $data = [];
@@ -444,20 +430,26 @@ class Summoner implements SummonerInterface
      * Retrieves all seasons played by a champion.
      * @return array
      */
-    public function seasons()
+    public function ladderRank()
     {
         $params   = ['userName' => $this->summonerName];
-        $response = $this->client->get('header/', $params);
-        
-        $dom = new Dom;
-        $dom->load($response->getBody()->getContents());
+
+        $dom = $this->client->get('header/', $params);
+
         $contents = $dom->find('.Item');
 
         $data = [];
 
-        $data['summonerName']= $this->summonerName;
-        $data['ranking']     = $dom->find('.ranking')->text;
-        $data['ladderRank']  = filter_var($dom->find('.LadderRank a')->text, FILTER_SANITIZE_NUMBER_FLOAT,FILTER_FLAG_ALLOW_FRACTION);
+        $data['summonerName'] = $this->summonerName;
+        $data['summonerId']   = $this->getId();
+        try {
+            $data['ranking']     = $dom->find('.ranking')->text;
+            $data['ladderRank']  = filter_var($dom->find('.LadderRank a')->text, FILTER_SANITIZE_NUMBER_FLOAT,FILTER_FLAG_ALLOW_FRACTION);  
+        } catch ( \Exception $e) {
+            $data['ranking']     = '';
+            $data['ladderRank']  = '';
+            
+        }
         $data['lastUpdate']  = $dom->find('.LastUpdate span')->getAttribute('data-datetime');
         $seasons = [];
         foreach ($contents as $content)
@@ -466,7 +458,7 @@ class Summoner implements SummonerInterface
             $lp     = $content->getAttribute('title');
             $tier   = $content->text;
 
-            $seasons[] = ['season' => $season, 'tier' => $tier, 'detail' => $lp];
+            $seasons[] = ['season' => $season, 'tier' => strtoupper($tier), 'detail' => strtoupper($lp)];
         }
         $data['seasons'] = $seasons;
         return $data;
@@ -485,17 +477,21 @@ class Summoner implements SummonerInterface
                     positionType: positionType,
     */
     
-    public function matchList($type = 'soloranked', $startInfo = 0, $championId ='')
+    public function matchList($type = 'soloranked', $startInfo = 0, $championId = '')
     {
         $params = [
                     'startInfo'   => $startInfo,
-                    'summonerId'  => $this->summonerId,
+                    'summonerId'  => $this->getId(),
                     'championId'  => $championId,
                     'type'        => $type,
                   ];
 
-        $response = $this->client->get('matches/ajax/averageAndList/', $params);
-    
+        $dom = $this->client->get('matches/ajax/averageAndList/', $params);
+
+        return $dom;
+        die;
+
+
         $body = $this->client->json($response);
 
         $body->lastInfo;
@@ -514,30 +510,34 @@ class Summoner implements SummonerInterface
 
             $i = str_replace($this->summonerId, '', filter_var($matchId, FILTER_SANITIZE_NUMBER_INT));
             
-            $data[$i]['matchId']        = $i;
-            $data[$i]['summonerId']     = $this->summonerId;
-            $data[$i]['gameType']       = str_replace(' ', '_', trim(strtoupper($content->find('.GameType')->text)));
-            $data[$i]['gameResult']     = str_replace(' ', '_', trim(strtoupper($content->find('.GameResult')->text)));
-            $data[$i]['gameLength']     = $content->find('.GameLength')->text;
-            //$data[$i]['ChampionImage']    = $content->find('.ChampionImage a img')->getAttribute('src');
-            $data[$i]['championName']   = $content->find('.ChampionName a')->text;
-            $data[$i]['championLevel']  = filter_var($content->find('.Level')->text, FILTER_SANITIZE_NUMBER_INT);
-            $data[$i]['trinketId']      = basename($trinket->getAttribute('src'), '.png');
-            $data[$i]['masteryId']      = basename($content->find('.Mastery img')->getAttribute('src'), '.png');
-            $data[$i]['kills']          = $content->find('.KDA .Kill')->text;
-            $data[$i]['deaths']         = $content->find('.KDA .Death')->text;
-            $data[$i]['assists']        = $content->find('.KDA .Assist')->text;
-            $data[$i]['kdaRatio']       = $content->find('span.KDARatio')->text;
+            $data[$i]['matchId']      = $i;
+            $data[$i]['summonerId']   = $this->getId();
+            $data['lastInfo']         = $body->lastInfo;
+            $data[$i]['gameType']     = str_replace(' ', '_', trim(strtoupper($content->find('.GameType')->text)));
+            $data[$i]['gameResult']   = str_replace(' ', '_', trim(strtoupper($content->find('.GameResult')->text)));
+            $data[$i]['gameLength']   = $content->find('.GameLength')->text;
+            $data[$i]['ChampionImage']= $content->find('.ChampionImage a img')->getAttribute('src');
+            $data[$i]['championName'] = $content->find('.ChampionName a')->text;
+            $data[$i]['championLevel']= filter_var($content->find('.Level')->text, FILTER_SANITIZE_NUMBER_INT);
+            $data[$i]['trinketId']    = basename($trinket->getAttribute('src'), '.png');
+            $data[$i]['masteryId']    = basename($content->find('.Mastery img')->getAttribute('src'), '.png');
+            $data[$i]['kills']        = $content->find('.KDA .Kill')->text;
+            $data[$i]['deaths']       = $content->find('.KDA .Death')->text;
+            $data[$i]['assists']      = $content->find('.KDA .Assist')->text;
+            $data[$i]['kdaRatio']     = $content->find('span.KDARatio')->text;
+            
             try {
-                //$data[$i]['multiKill']  = str_replace(' ', '_', trim(strtoupper($content->find('.MultiKill span')->text)));
-            } catch (Exception $e) {
+                
+                $data[$i]['multiKill']  = str_replace(' ', '_', trim(strtoupper($content->find('.MultiKill span')->text)));
+                
+            } catch ( \Exception $e) {
                 $data[$i]['multiKill']  = 'NONE';
             }
             $data[$i]['creepScore']     = $content->find('.CS span')->text;
 
             try {
-                //$data[$i]['visionWards'] = $content->find('.Ward span')->text;
-            } catch (Exception $e) {
+                $data[$i]['visionWards'] = $content->find('.Ward span')->text;
+            } catch ( \Exception $e) {
                 $data[$i]['visionWards'] = 0;
             }
 
@@ -558,7 +558,6 @@ class Summoner implements SummonerInterface
             }
 
             $data[$i]['itemBuild'] = $item;
-            $data[$i]['lastInfo']       = $body->lastInfo;
         }
 
         $teams = $dom->find('.FollowPlayers .Team .Summoner');
@@ -579,7 +578,7 @@ class Summoner implements SummonerInterface
 
         foreach ($data as $key => $value)
         {
-            $data[$key]['matchTeams'] = $builder[$i];
+            $data[$key]['matchTeamates'] = $builder[$i];
             $i++;
 
         }
@@ -594,42 +593,44 @@ class Summoner implements SummonerInterface
         {
             return 'Game ID is required.';
         }
-        $params = ['summonerId' => $this->summonerId, 'gameId' => $gameId, 'moreLoad' => 1];
-        $response = $this->client->get('matches/ajax/'. $type . '/', $params);
+        $params = ['summonerId' => $this->getId(), 'gameId' => $gameId, 'moreLoad' => 1];
         
-        $dom = new Dom;
-        $dom->load($response->getBody()->getContents());
+        $dom = $this->client->get('matches/ajax/'. $type . '/', $params);
+
         return $dom->outerHtml;
     }
 
     /**
-     * Retrieves most played champions of summoner.
+     * Retrieves 7 most played champions of summoner.
      * @param  string  $season    Lol season.
      * @param  integer $startInfo
-     * @return 
+     * @return array
      */
     public function mostPlayed($season = '7', $startInfo = 0)
     {
-        $params = ['summonerId' => $this->summonerId, 'season' => $season, 'startInfo' => $startInfo];
-        $response = $this->client->get('champions/ajax/champions.most/', $params);
-        
-        $dom = new Dom;
-        $dom->load($response->getBody()->getContents());
+        $params = ['summonerId' => $this->getId(), 'season' => $season, 'startInfo' => $startInfo];
+
+        $dom = $this->client->get('champions/ajax/champions.most/', $params);
+
         $teams = $dom->find('.ChampionBox');
 
         $data = [];
-        $i = 0;
+        $i = 1;
+
         foreach ($teams as $content)
         {
-            $data[$i]['championName']  = $content->find('.ChampionName a')->text;
-            $data[$i]['championImage'] =  $content->find('.ChampionImage')->getAttribute('src');
-            $data[$i]['championMinionKill'] =  $content->find('.ChampionMinionKill span')->text;
-            $data[$i]['KDA'] =  $content->find('.PersonalKDA div span')->text;
-            $data[$i]['kills']       =  $content->find('.KDAEach .Kill')->text;
-            $data[$i]['deaths']          =  $content->find('.KDAEach .Death')->text;
-            $data[$i]['assists']     =  $content->find('.KDAEach .Assist')->text;
-            $data[$i]['games']       =  filter_var($content->find('.Title')->text, FILTER_SANITIZE_NUMBER_INT);
-            $data[$i]['winrate']     =  $content->find('.WinRatio')->text;
+            $data[] = [
+                        'rank'          => $i,
+                        'championName'  => $content->find('.ChampionName a')->text,
+                        'championImage' => $content->find('.ChampionImage')->getAttribute('src'),
+                        'minionKill'    => $content->find('.ChampionMinionKill span')->text,
+                        'KDA'           => $content->find('.PersonalKDA div span')->text,
+                        'kills'         => $content->find('.KDAEach .Kill')->text,
+                        'deaths'        => $content->find('.KDAEach .Death')->text,
+                        'assists'       => $content->find('.KDAEach .Assist')->text,
+                        'games'         => filter_var($content->find('.Title')->text, FILTER_SANITIZE_NUMBER_INT),
+                        'winrate'       => $content->find('.WinRatio')->text,
+                      ];
             $i++;
         }
 
