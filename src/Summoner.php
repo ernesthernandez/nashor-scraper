@@ -2,6 +2,8 @@
 
 namespace Nashor;
 
+use Symfony\Component\DomCrawler\Crawler;
+
 class Summoner implements SummonerInterface
 {
 
@@ -65,7 +67,9 @@ class Summoner implements SummonerInterface
     {
         if ($this->summonerId == 0)
         {
-           $this->summonerId = filter_var($this->client->getRedirectUrl('http://www.lolking.net/search?', ['name' => $this->summonerName, 'region' => $this->region]), FILTER_SANITIZE_NUMBER_INT);
+          $url = $this->client->getRedirectUrl('http://www.lolking.net/search?', ['name' => $this->summonerName, 'region' => $this->region]);
+          $id = sscanf($url, 'http://www.lolking.net/summoner/'.$this->region.'/%d/');
+           $this->summonerId = $id[0];
         }
 
         return $this->summonerId;
@@ -107,10 +111,12 @@ class Summoner implements SummonerInterface
     }
 
     /**
-     * Calculate the Matchmaking Rating for a champion. AKA  Skill level.
+     * Get the Matchmaking Rating for a champion. AKA  Skill level.
+     * MMR displays your skill level.
+     * OP.GG updates the mmr algorithms more than twenty times per two months.
      * @return array
      */
-    public function mmr()
+    public function info()
     {
         $params =   [
                       'summonerName' => $this->summonerName,
@@ -119,24 +125,25 @@ class Summoner implements SummonerInterface
 
         $data['summonerId']   = $this->getId();
         $data['summonerName'] = $this->summonerName;
-        $data['mmr']          = filter_var(($dom->find('.MMR')->text), FILTER_SANITIZE_NUMBER_INT);
+        $data['mmr']          = filter_var(($dom->filter('.MMR')->text()), FILTER_SANITIZE_NUMBER_INT);
 
         try {
-    
-            $ex = mb_strcut($dom->find('.AverageTierScore .InlineMiddle')->text, 21, 15);
-            $do = explode(' ',$ex);
-            $data['league']   = strtoupper($do[0]);
+            $detail = sscanf(trim($dom->filter('.AverageTierScore > .InlineMiddle')->text()), 'The Average MMR for %s %s %d is %s');
 
-            if ($do[1] <= 5)
+            $data['league']   = strtoupper($detail[0]);
+
+            if ($data['league'] == 'CHALLENGER' or $data['league'] == 'MASTER')
             {
-                $data['division'] =   $do[1];
-                $data['points']   = filter_var($do[2], FILTER_SANITIZE_NUMBER_INT);
+                $data['division'] = 1;
+                $data['points']   = intval($detail[1]);
             }
             else
             {
-                $data['division'] =   1;
-                $data['points']   = filter_var($do[1], FILTER_SANITIZE_NUMBER_INT); 
+                $data['division'] = $detail[1];
+                $data['points']   = intval($detail[2]);
             }
+
+
         } catch ( \Exception $e) {
             
             $data['league']   = 'UNRANKED';
@@ -144,10 +151,11 @@ class Summoner implements SummonerInterface
             $data['points']   = 0;
         }
 
-        $data['average']      = $dom->find('.TierRankString')->text;
+        $data['average'] = trim($dom->filter('.TierRankString')->text());
 
         try {
-            $data['msg'] = $dom->find('.TipStatus')->text;
+            $data['msg'] = $dom->filter('.TipStatus')->text();
+
         } catch ( \Exception $e) {
             $data['msg'] =  '';
         }
@@ -172,120 +180,111 @@ class Summoner implements SummonerInterface
     }
 
     /**
-     * Retrieves summoner profile detail AKA summary.
+     * Retrieves Solo Ranked Summary
      * @return array
      */
-    public function recentInfo()
+    public function soloRanked()
     {
 
         $params =   [
               'summonerId' =>  $this->getId()
             ];
 
-        $dom = $this->client->get('http://lan.op.gg/multi/ajax/summoner/', $params);
+        $dom   = $this->client->get('http://'.$this->region.'.op.gg/multi/ajax/summoner/', $params);
 
-        try {
-            $active = trim(isset($dom->find('.RecentGameWinLogs > .Message')->text)) === 'No recent Ranked Solo within 2 months.';
-        } catch ( \Exception $e) {
-            $active = true;
-        }
+        $games = $dom->filter('.RecentGameWinLogs > .List > .Item')->each(function (Crawler $node, $i)
+            {
+                $matchResult = $node->filter('i')->attr('class') == '__spSite __spSite-225'? 'WIN': 'LOSE';
+                //$matchDate   = $node->attr('title');
+                return $matchResult;
+            });
 
-        $contents = $dom->find('.RecentGameWinLogs .List .Item');
-
-        $dates = [];
-
-        foreach ($contents as $content)
+        $seasons = $dom->filter('.SummonerExtra > .PreviousSeason')->each(function (Crawler $node, $i)
         {
-            $matchResult = $content->find('i')->getAttribute('class') == '__spSite __spSite-212'? true: false;
-            $matchDate   = $content->getAttribute('title');
-            $dates[$matchDate] = $matchResult;
-        }
-
-        $seasons = $dom->find('.TierText');
-        
-        $season = [];
-
-        foreach ($seasons as $content)
-        {
-            $season[] = $content->text;
-        }
-
-        preg_match("/([0-9]{1,2}|100)%/", $dom->find('.RecentGameWinLogs .Title')->text, $recentWinrate);
-        preg_match("/([0-9]{1,2}|100)%/", $dom->find('.WinLoseWinRatio .WinRatio')->text, $totalWinrate);
+            return ['season' => $node->filter('.TierText')->text(), 'image' => $node->filter('img')->attr('src')];
+        });   
 
         $data['summonerId']    = $this->getId();
         $data['summonerName']  = $this->summonerName;
 
-        $data['recentMatches'] = $dates;
+        $data['recentMatches']   = $games;
+        $data['previousSeasons'] = $seasons;
+
         try {
-            $data['recentStreak']  = trim($dom->find('.WinStreak')->text);
+             preg_match("/([0-9]{1,2}|100)%/", $dom->filter('.RecentGameWinLogs > .Title')->text(), $recentWinrate);
+             $data['recentWinRatio']  = intval(array_shift($recentWinrate));
+        } catch (\Exception $e) {
+            $data['recentWinRatio']  = 0;
+        }
+
+        try {
+            $data['recentStreak']  = trim($dom->filter('.WinStreak')->text());
         } catch ( \Exception $e) {
-            $data['recentStreak']  = '';
+            $data['recentStreak']  = 'No recent streak.';
         }
 
-        $row = $dom->find('.Content .Row');
-        $seasons   = count($dom->find('.Buttons .Button'));
+        $champion = $dom->filter('.ChampionSmallStats .Content .Row')->each(function (Crawler $node, $i)
+        {
+            return [
+                        'rank'      => $i + 1, 
+                        'champion'  => trim($node->filter('.ChampionName')->text()), 
+                        'games'     => trim($node->filter('.GameCount')->text()),
+                        'winRatio'  => trim($node->filter('.WinRatio > .Ratio')->text()),
+                        'KDA'       => trim($node->filter('.KDA > .Ratio')->text())
+                        ];
+        });
 
-        $champion = [];
-        $i = 0;
-        foreach ($row as $content){
-            $champion[$i]['championName'] = $content->find('.ChampionName')->text;
-            $champion[$i]['gameCount']  = $content->find('.GameCount')->text;
-            $champion[$i]['winRatio']   = $content->find('.WinRatio span')->text;
-            $champion[$i]['KDA ']       = $content->find('.KDA span')->text;
-            $i++;
-        }
+        $seasons   = count($dom->filter('.Buttons > .Button'));
 
-        $data['championSummary'] = array_chunk(array_chunk($champion, 10),  $seasons);
+        $data['championSummary'] = array_chunk(array_chunk($champion, 10),  $seasons)[0];
         
         return $data;
     }
 
-        /**
-     * Retrieves summoner profile detail AKA summary.
+    /**
+     * Retrieves summoner info detail AKA summary.
      * @return array
      */
-    public function profile()
+    public function summary()
     {
 
         $params =   [
               'summonerId' =>  $this->getId()
             ];
 
-        $dom = $this->client->get('http://lan.op.gg/multi/ajax/summoner/', $params);
+        $dom = $this->client->get('http://'.$this->region.'.op.gg/multi/ajax/summoner/', $params);
 
         $data['summonerId']    = $this->getId();
-        $data['summonerName']  = trim($dom->find('.SummonerName')->text);
-
-        $is_active = FALSE;
+        $data['summonerName']  = $this->summonerName;
 
         try 
         {
-            $is_active = trim(isset($dom->find('.RecentGameWinLogs .Message')->text)) === 'No recent Ranked Solo within 2 months.';
+            $is_unactive = trim($dom->filter('.RecentGameWinLogs > .Message')->text()) == 'No recent Ranked Solo within 2 months.';
 
         } catch ( \Exception $e) {
-             $is_active = FALSE;
+             $is_unactive = FALSE;
         }
 
-        if($is_active)
+        if(!$is_unactive)
         {
-            $tier           = 'UNACTIVE';
-            $data['league'] = $tier;
+            $detail = sscanf($dom->filter('.TierRank')->text(), '%s %d');
+            $data['league']   = strtoupper($detail[0]);
+            $data['division'] = strtoupper($detail[1]);
         }
-        else if (trim($dom->find('.TierRank')->text) == 'Level')
+        else if (trim($dom->filter('.TierRank')->text()) == 'Level')
         {   
-            $tier             = 'UNRANKED';
-            $data['league']   = $tier;
+            $tier           = 'UNRANKED';
+            $data['league'] = $tier;
         }
         else
         {
-            $tier = trim(strtoupper(preg_replace('/[0-9]+/', '', $dom->find('.TierRank')->text)));
-            $data['league']   = $tier;
+            $tier           = 'UNRANKED';
+            $data['league'] = $tier;
         }
         
         try {
 
-            $winrate = $dom->find('.WinLoseWinRatio .WinRatio')->text;
+            $winrate = $dom->filter('.WinLoseWinRatio > .WinRatio')->text();
         
         } catch ( \Exception $e) {
             $winrate = 0;
@@ -295,44 +294,37 @@ class Summoner implements SummonerInterface
 
         try
         {
-            $data['division'] = filter_var($dom->find('.TierRank')->text, FILTER_SANITIZE_NUMBER_INT) ?  filter_var($dom->find('.TierRank')->text, FILTER_SANITIZE_NUMBER_INT) : 1;
-        } catch ( \Exception $e) {
-            $data['division'] = 1;
-        }
-
-        try
-        {
-            $data['points']           = filter_var($dom->find('.LP')->text, FILTER_SANITIZE_NUMBER_INT, FILTER_FLAG_STRIP_LOW);
+            $data['points']           = filter_var($dom->filter('.LP')->text(), FILTER_SANITIZE_NUMBER_INT, FILTER_FLAG_STRIP_LOW);
         } catch ( \Exception $e) {
             $data['points']           = 0;
         }
 
+        try {
+            $data['wins']          = intval($dom->filter('.WinLoseWinRatio > .Wins')->text());
+        } catch ( \Exception $e) {
+            $data['wins']          = 0;
+        }
+
+        try {
+            $data['losses']        = intval($dom->filter('.WinLoseWinRatio > .Losses')->text());
+        } catch ( \Exception $e) {
+            $data['losses']        = 0;
+        }
         try
         {
             $data['winRatio']      = intval(array_shift($totalWinrate));
         } catch ( \Exception $e) {
                 $data['winRatio']  = 0;
         }
+
         try {
-            $data['wins']          = intval($dom->find('.WinLoseWinRatio .Wins')->text);
+            $data['recentStreak']  = trim($dom->filter('.WinStreak')->text());
         } catch ( \Exception $e) {
-            $data['wins']          = 0;
+            $data['recentStreak']  = 'No recent streak.';
         }
 
         try {
-            $data['losses']        = intval($dom->find('.WinLoseWinRatio .Losses')->text);
-        } catch ( \Exception $e) {
-            $data['losses']            = 0;
-        }
-
-        try {
-            $data['recentStreak']  = $dom->find('.WinStreak')->text;
-        } catch ( \Exception $e) {
-            $data['recentStreak']  = 'No recent Ranked Solo within 2 months.';
-        }
-
-        try {
-            $data['tierImage']     = $dom->find('.TierRankMedal img')->getAttribute('src');
+            $data['tierImage']     = $dom->filter('.TierRankMedal img')->attr('src');
         } catch ( \Exception $e) {
             $data['tierImage']     = 'default.png';
         }
@@ -343,16 +335,11 @@ class Summoner implements SummonerInterface
      * Checks summoner sepectate status AKA if summoner is playing a match.
      * @return bool
      */
-    public function status()
+    public function isPlaying()
     {
         $dom = $this->client->get('ajax/spectateStatus/', ['summonerName'=> $this->summonerName]);
 
-        $body     = $this->client->json($response, true);
-
-        if (array_key_exists('status', $body)) 
-            return true;
-        else
-            return false;
+        return $dom;
     }
 
     /**
@@ -367,63 +354,49 @@ class Summoner implements SummonerInterface
 
         $dom = $this->client->get('champions/ajax/champions.rank/', $params);
 
-        $contents = $dom->find('.Body .Row');
-
-        $data = [];
-
-        $keys = [
-            'rank',
-            'champion',
-            'winRatio',
-            'wins',
-            'losses',
-            'kills',
-            'deaths',
-            'assists',
-            'kda',
-            'gold',
-            'cd',
-            'towers',
-            'maxKills',
-            'maxDeaths',
-            'damageDealt',
-            'damageRecived',
-            'doubleKills',
-            'tripleKills',
-            'quadraKills'
-        ];
-
-        $i = 0;
-
-        foreach ($contents as $content)
+        $contents = $dom->filter('.Body > .Row')->each(function (Crawler $node, $i)
         {
-            
-            $data[$i][] = $i +1;
-            $data[$i][] = $content->find('.ChampionName a')->text;
-            $data[$i][] = $content->find('.RatioGraph')->getAttribute('data-value');
-            $data[$i][] = $content->find('.Graph .Text')->text;
-            $data[$i][] = $content->find('.Graph .Text')->text;
-            $data[$i][] = $content->find('.Kill')->text;
-            $data[$i][] = $content->find('.Death')->text;
-            $data[$i][] = $content->find('.Assist')->text;
-            $data[$i][] = $content->find('.KDA')->getAttribute('data-value');
+            $keys = [
+                'rank',
+                'champion',
+                'winRatio',
+                'wins',
+                'losses',
+                'kills',
+                'deaths',
+                'assists',
+                'kda',
+                'gold',
+                'cd',
+                'towers',
+                'maxKills',
+                'maxDeaths',
+                'damageDealt',
+                'damageRecived',
+                'doubleKills',
+                'tripleKills',
+                'quadraKills',
+            ];
+            $data = [
+                $i + 1,
+                $node->filter('.ChampionName a')->text(),
+                $node->filter('.RatioGraph')->attr('data-value'),
+                $node->filter('.Graph > .Text')->text(),
+                $node->filter('.Graph > .Text')->text(),
+                $node->filter('.Kill')->text(),
+                $node->filter('.Death')->text(),
+                $node->filter('.Assist')->text(),
+                $node->filter('.KDA')->attr('data-value')
+            ];
 
-            $details = $content->find('.Value');
-
-            $values = [];
-
-            foreach ($details as $content)
+            $detail = $node->filter('.Value')->each(function (Crawler $node, $i)
             {
-            $data[$i][] = $content->text;
+                return trim($node->text());
+            });
+            return array_combine($keys , array_merge($data, $detail));
+        });
 
-            }
-        
-            $data[$i] = array_combine($keys , $data[$i]);
-            
-            $i++;
-        }
-
-        return $data;
+        return $contents;
     }
 
     /**
@@ -436,31 +409,33 @@ class Summoner implements SummonerInterface
 
         $dom = $this->client->get('header/', $params);
 
-        $contents = $dom->find('.Item');
-
         $data = [];
 
         $data['summonerName'] = $this->summonerName;
         $data['summonerId']   = $this->getId();
+
         try {
-            $data['ranking']     = $dom->find('.ranking')->text;
-            $data['ladderRank']  = filter_var($dom->find('.LadderRank a')->text, FILTER_SANITIZE_NUMBER_FLOAT,FILTER_FLAG_ALLOW_FRACTION);  
+            $data['ranking']     = $dom->filter('.ranking')->text();
+            $data['ladderRank']  = filter_var($dom->filter('.LadderRank a')->text(), FILTER_SANITIZE_NUMBER_FLOAT,FILTER_FLAG_ALLOW_FRACTION);  
         } catch ( \Exception $e) {
             $data['ranking']     = '';
             $data['ladderRank']  = '';
             
         }
-        $data['lastUpdate']  = $dom->find('.LastUpdate span')->getAttribute('data-datetime');
-        $seasons = [];
-        foreach ($contents as $content)
-        {
-            $season = $content->find('b')->text;
-            $lp     = $content->getAttribute('title');
-            $tier   = $content->text;
+        $data['lastUpdate']  = $dom->filter('.LastUpdate > span')->attr('data-datetime');
 
-            $seasons[] = ['season' => $season, 'tier' => strtoupper($tier), 'detail' => strtoupper($lp)];
-        }
+        $seasons = $dom->filter('.Item')->each(function (Crawler $node, $i)
+        {
+            $season = trim($node->filter('b')->text());
+            $lp     = trim($node->attr('title'));
+            $tier   = trim($node->text());
+
+            return ['season' => $season, 'tier' => strtoupper($tier), 'detail' => strtoupper($lp)];
+
+        });
+
         $data['seasons'] = $seasons;
+
         return $data;
     }
 
@@ -477,7 +452,7 @@ class Summoner implements SummonerInterface
                     positionType: positionType,
     */
     
-    public function matchList($type = 'soloranked', $startInfo = 0, $championId = '')
+    public function matchList($type = '', $startInfo = 0, $championId = '')
     {
         $params = [
                     'startInfo'   => $startInfo,
@@ -499,75 +474,75 @@ class Summoner implements SummonerInterface
         $dom = new Dom;
         $dom->load($body->html);
 
-        $contents = $dom->find('.GameItemWrap');
+        $contents = $dom->filter('.GameItemWrap');
 
         $data = [];
 
         foreach ($contents as $content)
         {
-            $matchId = $content->find('.MatchDetail')->getAttribute('onclick');
-            $trinket = $content->find('.TrinketWithItem .Item .Image');
+            $matchId = $content->filter('.MatchDetail')->attr('onclick');
+            $trinket = $content->filter('.TrinketWithItem > .Item > .Image');
 
             $i = str_replace($this->summonerId, '', filter_var($matchId, FILTER_SANITIZE_NUMBER_INT));
             
             $data[$i]['matchId']      = $i;
             $data[$i]['summonerId']   = $this->getId();
             $data['lastInfo']         = $body->lastInfo;
-            $data[$i]['gameType']     = str_replace(' ', '_', trim(strtoupper($content->find('.GameType')->text)));
-            $data[$i]['gameResult']   = str_replace(' ', '_', trim(strtoupper($content->find('.GameResult')->text)));
-            $data[$i]['gameLength']   = $content->find('.GameLength')->text;
-            $data[$i]['ChampionImage']= $content->find('.ChampionImage a img')->getAttribute('src');
-            $data[$i]['championName'] = $content->find('.ChampionName a')->text;
-            $data[$i]['championLevel']= filter_var($content->find('.Level')->text, FILTER_SANITIZE_NUMBER_INT);
-            $data[$i]['trinketId']    = basename($trinket->getAttribute('src'), '.png');
-            $data[$i]['masteryId']    = basename($content->find('.Mastery img')->getAttribute('src'), '.png');
-            $data[$i]['kills']        = $content->find('.KDA .Kill')->text;
-            $data[$i]['deaths']       = $content->find('.KDA .Death')->text;
-            $data[$i]['assists']      = $content->find('.KDA .Assist')->text;
-            $data[$i]['kdaRatio']     = $content->find('span.KDARatio')->text;
+            $data[$i]['gameType']     = str_replace(' ', '_', trim(strtoupper($content->filter('.GameType')->text())));
+            $data[$i]['gameResult']   = str_replace(' ', '_', trim(strtoupper($content->filter('.GameResult')->text())));
+            $data[$i]['gameLength']   = $content->filter('.GameLength')->text();
+            $data[$i]['ChampionImage']= $content->filter('.ChampionImage a img')->attr('src');
+            $data[$i]['championName'] = $content->filter('.ChampionName a')->text();
+            $data[$i]['championLevel']= filter_var($content->filter('.Level')->text(), FILTER_SANITIZE_NUMBER_INT);
+            $data[$i]['trinketId']    = basename($trinket->attr('src'), '.png');
+            $data[$i]['masteryId']    = basename($content->filter('.Mastery img')->attr('src'), '.png');
+            $data[$i]['kills']        = $content->filter('.KDA > .Kill')->text();
+            $data[$i]['deaths']       = $content->filter('.KDA > .Death')->text();
+            $data[$i]['assists']      = $content->filter('.KDA > .Assist')->text();
+            $data[$i]['kdaRatio']     = $content->filter('span.KDARatio')->text();
             
             try {
                 
-                $data[$i]['multiKill']  = str_replace(' ', '_', trim(strtoupper($content->find('.MultiKill span')->text)));
+                $data[$i]['multiKill']  = str_replace(' ', '_', trim(strtoupper($content->filter('.MultiKill span')->text())));
                 
             } catch ( \Exception $e) {
                 $data[$i]['multiKill']  = 'NONE';
             }
-            $data[$i]['creepScore']     = $content->find('.CS span')->text;
+            $data[$i]['creepScore']     = $content->filter('.CS span')->text();
 
             try {
-                $data[$i]['visionWards'] = $content->find('.Ward span')->text;
+                $data[$i]['visionWards'] = $content->filter('.Ward span')->text();
             } catch ( \Exception $e) {
                 $data[$i]['visionWards'] = 0;
             }
 
-            $data[$i]['ckRate'] = filter_var($content->find('.CKRate')->text, FILTER_SANITIZE_NUMBER_INT);
+            $data[$i]['ckRate'] = filter_var($content->filter('.CKRate')->text(), FILTER_SANITIZE_NUMBER_INT);
             //timeago
-            $data[$i]['matchDate']      = $content->find('.TimeStamp ._timeago')->getAttribute('data-datetime');
-            //$data[$i]['humanizeDate']     = $content->find('.TimeStamp ._timeago')->text;
+            $data[$i]['matchDate']      = $content->filter('.TimeStamp > ._timeago')->attr('data-datetime');
+            //$data[$i]['humanizeDate']     = $content->filter('.TimeStamp > ._timeago')->text();
 
-            $items = $content->find('.Items .ItemList .Item .Image');
+            $items = $content->filter('.Items > .ItemList > .Item > .Image');
 
             $item = [];
 
             foreach ($items as $content)
             {
-                $src  = $content->getAttribute('src');
-                $name = $content->getAttribute('alt');
+                $src  = $content->attr('src');
+                $name = $content->attr('alt');
                 $item[] = intval(basename($src, '.png'));
             }
 
             $data[$i]['itemBuild'] = $item;
         }
 
-        $teams = $dom->find('.FollowPlayers .Team .Summoner');
+        $teams = $dom->filter('.FollowPlayers > .Team > .Summoner');
 
         $team = [];
 
         foreach ($teams as $content)
         {
-            $summ = $content->find('.SummonerName .Link')->text;
-            $champ= $content->find('.ChampionImage .Image')->text;
+            $summ = $content->filter('.SummonerName > .Link')->text();
+            $champ= $content->filter('.ChampionImage > .Image')->text();
 
             $team[] = ['summonerName' => $summ, 'championName' => $champ];
         }
@@ -612,7 +587,7 @@ class Summoner implements SummonerInterface
 
         $dom = $this->client->get('champions/ajax/champions.most/', $params);
 
-        $teams = $dom->find('.ChampionBox');
+        $teams = $dom->filter('.ChampionBox');
 
         $data = [];
         $i = 1;
@@ -621,15 +596,15 @@ class Summoner implements SummonerInterface
         {
             $data[] = [
                         'rank'          => $i,
-                        'championName'  => $content->find('.ChampionName a')->text,
-                        'championImage' => $content->find('.ChampionImage')->getAttribute('src'),
-                        'minionKill'    => $content->find('.ChampionMinionKill span')->text,
-                        'KDA'           => $content->find('.PersonalKDA div span')->text,
-                        'kills'         => $content->find('.KDAEach .Kill')->text,
-                        'deaths'        => $content->find('.KDAEach .Death')->text,
-                        'assists'       => $content->find('.KDAEach .Assist')->text,
-                        'games'         => filter_var($content->find('.Title')->text, FILTER_SANITIZE_NUMBER_INT),
-                        'winrate'       => $content->find('.WinRatio')->text,
+                        'championName'  => $content->filter('.ChampionName a')->text(),
+                        'championImage' => $content->filter('.ChampionImage')->attr('src'),
+                        'minionKill'    => $content->filter('.ChampionMinionKill span')->text(),
+                        'KDA'           => $content->filter('.PersonalKDA div span')->text(),
+                        'kills'         => $content->filter('.KDAEach > .Kill')->text(),
+                        'deaths'        => $content->filter('.KDAEach > .Death')->text(),
+                        'assists'       => $content->filter('.KDAEach > .Assist')->text(),
+                        'games'         => filter_var($content->filter('.Title')->text(), FILTER_SANITIZE_NUMBER_INT),
+                        'winrate'       => $content->filter('.WinRatio')->text(),
                       ];
             $i++;
         }

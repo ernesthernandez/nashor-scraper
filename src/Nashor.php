@@ -4,11 +4,10 @@ namespace Nashor;
 
 use Nashor\Summoner;
 use GuzzleHttp\{Client, Promise, HandlerStack};
-use GuzzleHttp\Psr7\{Request, Response};
-use GuzzleHttp\TransferStats;
 use Psr\Http\Message\{RequestInterface, ResponseInterface, UriInterface};
-use GuzzleHttp\Psr7;
 use GuzzleHttp\Exception\RequestException;
+use Symfony\Component\DomCrawler\Crawler;
+
 use PHPHtmlParser\Dom as Parser;
 
 class Nashor
@@ -116,7 +115,7 @@ class Nashor
                                             ]);
             return $this->jsonResponse($response);
         } catch (RequestException $e) {
-            return false;
+            return $e->getMessage();
         }
     }
 
@@ -134,10 +133,27 @@ class Nashor
 
             return $this->parsedResponse($response);
         } catch (RequestException $e) {
-             return false;
+             return $e->getMessage();
         }
     }
 
+    /**
+     * Send Guzzle 6 get request with query parameters.
+     * @param  $url string HTTP reques URI
+     * @return object
+     */
+    public function request(string $url, $params = array())
+    {
+        try {
+            $response = $this->client->request('GET', $url, [
+                                            'query' => $params,
+                                            ]);  
+
+            return $response->getBody();
+        } catch (RequestException $e) {
+             return $e->getMessage();
+        }
+    }
     /**
      * Print array from json string
      * @param  object  $request Guzzle rquest
@@ -224,8 +240,8 @@ class Nashor
 
     protected function parsedResponse(ResponseInterface $response)
     {
-        $dom = new Parser;
-        return $dom->load((string) $response->getBody()->getContents());
+        $dom = new Crawler((string) $response->getBody()->getContents());
+        return $dom;        
     }
     protected function jsonResponse(ResponseInterface $response)
     {
