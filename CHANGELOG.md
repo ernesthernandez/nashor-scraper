@@ -1,22 +1,28 @@
 # Changelog
 
-All Notable changes to `:package_name` will be documented in this file.
+All Notable changes to nashor-scraper will be documented in this file.
 
 Updates should follow the [Keep a CHANGELOG](http://keepachangelog.com/) principles.
 
-## NEXT - YYYY-MM-DD
+## NEXT - 2017-02-27
 
 ### Added
-- Nothing
+- Methods
+- renew
+- info
+- lpHistory
+- soloRanked
+- summary
+- isPlaying
+- championSumaries
+- ladderRank
+- matchList
+- matchDetail
+- mostPlayed
 
-### Deprecated
-- Nothing
 
 ### Fixed
-- Nothing
+- DOM errors
 
 ### Removed
-- Nothing
-
-### Security
-- Nothing
+-  html-parser library
