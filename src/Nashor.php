@@ -142,14 +142,13 @@ class Nashor
      * @param  $url string HTTP reques URI
      * @return object
      */
-    public function request(string $url, $params = array())
+    public function getAsJson(string $url, $params = array())
     {
         try {
             $response = $this->client->request('GET', $url, [
                                             'query' => $params,
                                             ]);  
-
-            return $response->getBody();
+            return $this->jsonResponse($response);
         } catch (RequestException $e) {
              return $e->getMessage();
         }
