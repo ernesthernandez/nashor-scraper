@@ -175,8 +175,7 @@ class Summoner implements SummonerInterface
                     'period'     =>  $period
                   ];
 
-        $response = $this->client->post('ajax/lpHistory.json/', $params);
-        return   $response;
+        return $this->client->post('ajax/lpHistory.json/', $params);
     }
 
     /**
@@ -353,9 +352,9 @@ class Summoner implements SummonerInterface
     }
 
     /**
-     * obtain summoner sepectate status
-     * @param  [type] $summonerName [description]
-     * @return [type]               [description]
+     * Get the 20 most played champions by a summoner.
+     * @param  int $season 
+     * @return array
      */
     public function championSumaries($season = '7')
     {
@@ -364,49 +363,46 @@ class Summoner implements SummonerInterface
 
         $dom = $this->client->get('champions/ajax/champions.rank/', $params);
 
-        $contents = $dom->filter('.Body > .Row')->each(function (Crawler $node, $i)
+        $champions = $dom->filter('.Body > .Row')->each(function (Crawler $node, $i)
         {
-            $keys = [
-                'rank',
-                'champion',
-                'winRatio',
-                'wins',
-                'losses',
-                'kills',
-                'deaths',
-                'assists',
-                'kda',
-                'gold',
-                'cd',
-                'towers',
-                'maxKills',
-                'maxDeaths',
-                'damageDealt',
-                'damageRecived',
-                'doubleKills',
-                'tripleKills',
-                'quadraKills',
-            ];
-            $data = [
-                $i + 1,
-                $node->filter('.ChampionName a')->text(),
-                $node->filter('.RatioGraph')->attr('data-value'),
-                $node->filter('.Graph > .Text')->text(),
-                $node->filter('.Graph > .Text')->text(),
-                $node->filter('.Kill')->text(),
-                $node->filter('.Death')->text(),
-                $node->filter('.Assist')->text(),
-                $node->filter('.KDA')->attr('data-value')
+
+            try {
+                $wins = filter_var($node->filter('.Graph > .Text')->eq(0)->text(), FILTER_SANITIZE_NUMBER_INT);
+            } catch ( \Exception $e) {
+                $wins = 0;
+            }
+            try {
+                $losses = filter_var($node->filter('.Graph > .Text')->eq(1)->text(), FILTER_SANITIZE_NUMBER_INT);
+            } catch ( \Exception $e) {
+                $losses = 0;
+            }
+
+            return [
+                'rank'          => $i + 1,
+                'champion'      => $node->filter('.ChampionName > a')->text(),
+                'winRatio'      => $node->filter('.RatioGraph')->attr('data-value'),
+                'wins'          => trim($wins),
+                'losses'        => trim($losses),
+                'kills'         => $node->filter('.Kill')->text(),
+                'deaths'        => $node->filter('.Death')->text(),
+                'assists'       => $node->filter('.Assist')->text(),
+                'kda'           => $node->filter('.KDA')->attr('data-value'),
+                'gold'          => trim($node->filter('.Value')->eq(0)->text()),
+                'cd'            => trim($node->filter('.Value')->eq(1)->text()),
+                'towers'        => trim($node->filter('.Value')->eq(2)->text()),
+                'maxKills'      => trim($node->filter('.Value')->eq(3)->text()),
+                'maxDeaths'     => trim($node->filter('.Value')->eq(4)->text()),
+                'damageDealt'   => trim($node->filter('.Value')->eq(5)->text()),
+                'damageRecived' => trim($node->filter('.Value')->eq(6)->text()),
+                'doubleKills'   => trim($node->filter('.Value')->eq(7)->text()),
+                'tripleKills'   => trim($node->filter('.Value')->eq(8)->text()),
+                'quadraKills'   => trim($node->filter('.Value')->eq(9)->text())
             ];
 
-            $detail = $node->filter('.Value')->each(function (Crawler $node, $i)
-            {
-                return trim($node->text());
-            });
-            return array_combine($keys , array_merge($data, $detail));
+            return $champions;
         });
 
-        return $contents;
+        return $champions;
     }
 
     /**
