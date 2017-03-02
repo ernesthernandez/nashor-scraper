@@ -421,24 +421,28 @@ class Summoner implements SummonerInterface
         $data['summonerId']   = $this->getId();
 
         try {
-            $data['ranking']     = $dom->filter('.ranking')->text();
-            $data['ladderRank']  = filter_var($dom->filter('.LadderRank a')->text(), FILTER_SANITIZE_NUMBER_FLOAT,FILTER_FLAG_ALLOW_FRACTION);  
+            $data['ladderRank']  = filter_var($dom->filter('.ranking')->text(), FILTER_SANITIZE_NUMBER_INT);
+            $data['climbStatus'] = (float) str_replace($data['ladderRank'], '', filter_var(trim($dom->filter('.LadderRank a')->text()), FILTER_SANITIZE_NUMBER_FLOAT,FILTER_FLAG_ALLOW_FRACTION));  
         } catch ( \Exception $e) {
-            $data['ranking']     = '';
-            $data['ladderRank']  = '';
+            $data['ladderRank']  = 0;
+            $data['climbStatus'] = 0.00;
             
         }
         $data['lastUpdate']  = $dom->filter('.LastUpdate > span')->attr('data-datetime');
 
-        $seasons = $dom->filter('.Item')->each(function (Crawler $node, $i)
-        {
-            $season = trim($node->filter('b')->text());
-            $lp     = trim($node->attr('title'));
-            $tier   = trim($node->text());
+        try {
+            $seasons = $dom->filter('.Item')->each(function (Crawler $node, $i)
+            {
+                $season = trim($node->filter('b')->text());
+                $league = sscanf(trim($node->attr('title')), '%s %d %dLP');
+    
+                return ['season' => $season, 'league' => strtoupper($league[0]), 'division' => $league[1], 'points' => $league[2]];
 
-            return ['season' => $season, 'tier' => strtoupper($tier), 'detail' => strtoupper($lp)];
-
-        });
+            });
+            
+        } catch ( \Exception $e) {
+            $seasons = [];
+        }
 
         $data['seasons'] = $seasons;
 
@@ -481,11 +485,12 @@ class Summoner implements SummonerInterface
 
             $matchId   = str_replace($id, '', filter_var($matchId, FILTER_SANITIZE_NUMBER_INT));
             
-            $itemBuild = $node->filter('.Items > .ItemList > .Item > .Image')->each(function (Crawler $nd, $i)
+            $itemBuild = $node->filter('.Items > .Item > .Image')->each(function (Crawler $nd, $i)
             {
-                $src  = $nd->attr('src');
+                $img = $nd->attr('src');
+                $src = basename($img, '.png');
                 $name = $nd->attr('alt');
-                return $src;
+                return ['id' => $src, 'name' => $name];
             });
 
             try {
@@ -511,13 +516,17 @@ class Summoner implements SummonerInterface
 
             $builder = array_chunk(array_chunk($team, 5), 2);   
 
+            $csDetail = explode(' ', trim($node->filter('.CS > span')->text()));
+            $creepScore = filter_var($csDetail[0], FILTER_SANITIZE_NUMBER_FLOAT);
+            $csPerMinute= filter_var($csDetail[1], FILTER_SANITIZE_NUMBER_FLOAT,FILTER_FLAG_ALLOW_FRACTION);
+
             $response = [
                     'matchId'      => $matchId,
                     'summonerId'   => $id,
                     'gameType'     => str_replace(' ', '_', trim(strtoupper($node->filter('.GameType')->text()))),
                     'gameResult'   => str_replace(' ', '_', trim(strtoupper($node->filter('.GameResult')->text()))),
                     'gameLength'   => $node->filter('.GameLength')->text(),
-                    'ChampionImage'=> $node->filter('.ChampionImage a img')->attr('src'),
+                    //'ChampionImage'=> $node->filter('.ChampionImage a img')->attr('src'),
                     'championName' => $node->filter('.ChampionName a')->text(),
                     'championLevel'=> filter_var($node->filter('.Level')->text(), FILTER_SANITIZE_NUMBER_INT),
                     'trinketId'    => basename($trinket->attr('src'), '.png'),
@@ -528,7 +537,8 @@ class Summoner implements SummonerInterface
                     'kdaRatio'     => $node->filter('span.KDARatio')->text(),
                     'ckRate'       => filter_var($node->filter('.CKRate')->text(), FILTER_SANITIZE_NUMBER_INT),
                     'matchDate'    => $node->filter('.TimeStamp > ._timeago')->attr('data-datetime'),
-                    'creepScore'   => $node->filter('.CS span')->text(),
+                    'creepScore'   => $creepScore,
+                    'csPerMinute'  => $csPerMinute,
                     'itemBuild'    => $itemBuild,
                     'visionWards'  => $visionWards,
                     'multiKill'    => $multiKill,
