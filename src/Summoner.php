@@ -266,11 +266,11 @@ class Summoner implements SummonerInterface
 
         if(!$is_unactive)
         {
-            $detail = sscanf($dom->filter('.TierRank')->text(), '%s %d');
+            $detail = sscanf(trim($dom->filter('.TierRank')->eq(1)->text()), '%s %d');
             $data['league']   = strtoupper($detail[0]);
             $data['division'] = strtoupper($detail[1]);
         }
-        else if (trim($dom->filter('.TierRank')->text()) == 'Level')
+        else if (trim($dom->filter('.TierRank')->eq(1)->text()) == 'Level')
         {   
             $tier           = 'UNRANKED';
             $data['league'] = $tier;
@@ -281,10 +281,10 @@ class Summoner implements SummonerInterface
             $data['league'] = $tier;
         }
         
-        try {
+        try
+        {
+            $winrate = $dom->filter('.TierRank')->eq(0)->filter('.WinLose > .WinRatio')->text();
 
-            $winrate = $dom->filter('.WinLoseWinRatio > .WinRatio')->text();
-        
         } catch ( \Exception $e) {
             $winrate = 0;
         }
@@ -293,37 +293,50 @@ class Summoner implements SummonerInterface
 
         try
         {
-            $data['points']           = filter_var($dom->filter('.LP')->text(), FILTER_SANITIZE_NUMBER_INT, FILTER_FLAG_STRIP_LOW);
+            $data['points']        = filter_var($dom->filter('.LP')->text(), FILTER_SANITIZE_NUMBER_INT, FILTER_FLAG_STRIP_LOW);
         } catch ( \Exception $e) {
-            $data['points']           = 0;
+            $data['points']        = 0;
         }
 
         try {
-            $data['wins']          = intval($dom->filter('.WinLoseWinRatio > .Wins')->text());
+            $data['wins']          = intval(trim($dom->filter('.TierRank')->eq(0)->filter('.WinLose > .Wins')->text()));
         } catch ( \Exception $e) {
             $data['wins']          = 0;
         }
 
         try {
-            $data['losses']        = intval($dom->filter('.WinLoseWinRatio > .Losses')->text());
+            $data['losses']        = intval(trim($dom->filter('.TierRank')->eq(0)->filter('.WinLose > .Losses')->text()));
         } catch ( \Exception $e) {
             $data['losses']        = 0;
         }
+
         try
         {
-            $data['winRatio']      = intval(array_shift($totalWinrate));
+            $data['winRatio']  = intval(array_shift($totalWinrate));
         } catch ( \Exception $e) {
-                $data['winRatio']  = 0;
+            $data['winRatio']  = 0;
         }
 
         try {
-            $data['recentStreak']  = trim($dom->filter('.WinStreak')->text());
+            $data['kda']       =  trim($dom->filter('.KDA > .Content')->text());
         } catch ( \Exception $e) {
-            $data['recentStreak']  = 'No recent streak.';
+            $data['kda']       = '0:0:0';
         }
 
         try {
-            $data['tierImage']     = $dom->filter('.TierRankMedal img')->attr('src');
+            $data['recentWinrate']  =  intval(trim($dom->filter('.RecentGameContent > .WinRatio > .Content > .Graph > span')->text()));
+        } catch ( \Exception $e) {
+            $data['recentWinrate']  = 0;
+        }
+
+        try {
+            $data['role']          = strtoupper(trim($dom->filter('.Position > .Content > span')->text()));
+        } catch ( \Exception $e) {
+            $data['role']          = 'UNKNOWN';
+        }
+
+        try {
+            $data['tierImage']     = trim($dom->filter('.TierRank')->eq(0)->filter('.Image > img')->attr('src'));
         } catch ( \Exception $e) {
             $data['tierImage']     = 'default.png';
         }
