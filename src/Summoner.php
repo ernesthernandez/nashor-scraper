@@ -199,38 +199,23 @@ class Summoner implements SummonerInterface
             ];
 
         $dom   = $this->client->get('http://'.$this->region.'.op.gg/multi/ajax/summoner/', $params);
-
-        $games = $dom->filter('.RecentGameWinLogs > .List > .Item')->each(function (Crawler $node, $i)
-            {
-                $matchResult = $node->filter('i')->attr('class') == '__spSite __spSite-225'? 'WIN': 'LOSE';
-                //$matchDate   = $node->attr('title');
-                return $matchResult;
-            });
-
-        $seasons = $dom->filter('.SummonerExtra > .PreviousSeason')->each(function (Crawler $node, $i)
-        {
-            return ['season' => $node->filter('.TierText')->text(), 'image' => $node->filter('img')->attr('src')];
-        });
-
         $data['summonerId']    = $this->getId();
         $data['summonerName']  = $this->summonerName;
-
-        $data['recentMatches']   = $games;
-        $data['previousSeasons'] = $seasons;
-
         try {
-             preg_match("/([0-9]{1,2}|100)%/", $dom->filter('.RecentGameWinLogs > .Title')->text(), $recentWinrate);
-             $data['recentWinRatio']  = intval(array_shift($recentWinrate));
-        } catch (\Exception $e) {
-            $data['recentWinRatio']  = 0;
+            $data['recentWinrate']  =  intval(trim($dom->filter('.RecentGameContent > .WinRatio > .Content > .Graph > span')->text()));
+        } catch ( \Exception $e) {
+            $data['recentWinrate']  = 0;
         }
-
+        try {
+            $data['role']          = strtoupper(trim($dom->filter('.Position > .Content > span')->text()));
+        } catch ( \Exception $e) {
+            $data['role']          = 'UNKNOWN';
+        }
         try {
             $data['recentStreak']  = trim($dom->filter('.WinStreak')->text());
         } catch ( \Exception $e) {
             $data['recentStreak']  = 'No recent streak.';
         }
-
         $champion = $dom->filter('.ChampionSmallStats .Content .Row')->each(function (Crawler $node, $i)
         {
             return [
@@ -241,11 +226,12 @@ class Summoner implements SummonerInterface
                         'KDA'       => trim($node->filter('.KDA > .Ratio')->text())
                         ];
         });
-
-        $seasons   = count($dom->filter('.Buttons > .Button'));
-
-        $data['championSummary'] = array_chunk(array_chunk($champion, 10),  $seasons)[0];
-
+        if ($seasons   = count($dom->filter('.MostChampionSeason > ul > li')) != 0) {
+             $data['championSummary'] = array_chunk(array_chunk($champion, 10),  $seasons)[0];
+        }
+        else {
+            $data['championSummary'] = 'No recent Ranked Solo within 2 months.';
+        }
         return $data;
     }
 
