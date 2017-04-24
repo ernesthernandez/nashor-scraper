@@ -31,13 +31,17 @@ $ composer require pewpewyou/nashor-scraper
 
 ``` php
 
+require 'vendor/autoload.php';
+
 use Nashor\Summoner;
 
-$summoner = new Summoner('scorpionp', 'lan');
+$summoner = new Summoner('páprika', 'lan');
+
 //retrives summoner match making rate
-$summoner->mmr();
-//summoner ranking
-$summoner->ladderRank();
+
+$info = $summoner->info();
+
+print_r($info);
 
 ```
 
