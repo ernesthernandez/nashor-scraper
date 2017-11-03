@@ -1,5 +1,5 @@
 {
-    "name": "pewpewyou/nashor-scraper",
+    "name": "pewpewu/nashor-scraper",
     "type": "library",
     "description": "Nashor is a fast high-level web crawling and web scraping tool for OP.GG",
     "keywords": [
@@ -8,7 +8,7 @@
         "opgg",
         "nashor-scraper"
     ],
-    "homepage": "https://github.com/pewpewyou/nashor-scraper",
+    "homepage": "https://github.com/pewpewu/nashor-scraper",
     "license": "MIT",
     "authors": [
         {
